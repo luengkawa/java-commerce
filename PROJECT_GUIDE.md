@@ -504,6 +504,10 @@ Flyway 需要的表级权限是 `CREATE`、`ALTER`、`DROP`、`INDEX`、`REFEREN
 
 ### 4.4 启动 MySQL 并验证账号
 
+- [x] 提供数据库建库和用户授权步骤，应用不使用 root；说明 Flyway 迁移所需权限。
+- [x] 提供只启动 MySQL 的 Compose 命令。
+- [x] 等待 MySQL 健康检查通过，验证连接与账号权限。
+
 compose.yaml 目前只定义 MySQL 服务，应用容器在第 8 步加入：
 
 ```sh
