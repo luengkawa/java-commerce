@@ -1,0 +1,22 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.p12
+*.pfx
+*.jks
+application-*-private.yml
+application-*-secret.yml
+
+# Java build output
+target/
+*.class
+*.log
+
+# IDE and operating system files
+.idea/
+*.iml
+.vscode/
+.DS_Store
