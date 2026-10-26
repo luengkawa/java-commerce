@@ -1,0 +1,32 @@
+# 第 4 步：只启动 MySQL。应用容器在第 8 步加入本文件。
+# 变量来自项目根目录的 .env（Docker Compose 自动读取）；不要提交真实 .env。
+name: commerce-platform
+
+services:
+  mysql:
+    image: mysql:8.4.9
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required in .env}
+      MYSQL_DATABASE: ${DB_NAME:-commerce}
+      MYSQL_USER: ${DB_USERNAME:-commerce_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    ports:
+      # 只绑定宿主机回环地址，不对局域网暴露 MySQL。
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping --protocol=TCP -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  mysql-data:

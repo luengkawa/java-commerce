@@ -1,6 +1,11 @@
 spring:
   main:
     banner-mode: "off"
+  # 单元测试与上下文测试不连接 MySQL；数据库集成测试在第 7 步使用独立 profile。
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 
 logging:
   level:

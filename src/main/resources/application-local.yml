@@ -2,6 +2,9 @@ spring:
   config:
     activate:
       on-profile: local
+  flyway:
+    # local 额外加载可重复执行的开发数据；prod 只执行 db/migration。
+    locations: classpath:db/migration,classpath:db/seed
 
 logging:
   level:

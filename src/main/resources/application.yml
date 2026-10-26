@@ -3,6 +3,19 @@ spring:
     name: commerce-platform
   profiles:
     default: local
+  datasource:
+    url: "jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:commerce}?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+    username: ${DB_USERNAME:commerce_app}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    clean-disabled: true
+    placeholder-replacement: false
 
 server:
   port: ${SERVER_PORT:8080}

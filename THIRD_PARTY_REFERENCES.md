@@ -10,3 +10,5 @@
 | [gz-yami/mall4j](https://github.com/gz-yami/mall4j) | 商品、订单与库存领域划分 | AGPL-3.0 | 未复制代码 |
 
 Spring Boot、Maven Wrapper 及项目依赖由 Maven 坐标和依赖元数据管理。Maven Wrapper 发布脚本的 Apache License 2.0 文本保存在 `.mvn/wrapper/LICENSE.txt`。
+
+第 4 步新增的数据库组件：MySQL Community Server 8.4.9（容器镜像，GPLv2）、Flyway Community 11.7.2（Apache License 2.0）、MySQL Connector/J 9.7.0（GPLv2，含 Universal FOSS Exception）和 HikariCP 6.3.3（Apache License 2.0）。镜像版本在 `compose.yaml` 固定，其余版本由 Spring Boot BOM 管理；表结构与迁移脚本为项目独立编写，未复制参考项目代码。

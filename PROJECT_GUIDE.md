@@ -238,7 +238,7 @@ MVNW_VERBOSE=true ./mvnw -version
 | `spring-boot-starter-actuator` | 健康检查和基础运行信息 |
 | `spring-boot-starter-test` | JUnit 5、MockMvc 和测试支持，仅测试环境使用 |
 
-Maven Enforcer 要求构建进程使用 JDK 17；编译器使用 `--release 17`。这能避免电脑默认 JDK 22 时产生无法在 Java 17 环境运行的字节码。MySQL、MyBatis-Plus 和 Flyway 在第 4 步加入。
+Maven Enforcer 要求构建进程使用 JDK 17；编译器使用 `--release 17`。这能避免电脑默认 JDK 22 时产生无法在 Java 17 环境运行的字节码。MySQL 驱动、数据库连接和 Flyway 在第 4 步加入；MyBatis-Plus 与首个 Mapper 在第 6 步一起引入，避免提前配置无法验证的持久层。
 
 ### 2.2 代码入口与阅读顺序
 
@@ -436,18 +436,137 @@ source scripts/use-java17.sh
 
 前置：第 3 步已准备数据库环境变量。本步准备表结构和 MySQL 服务，第 5 步启动应用并执行迁移。
 
-- [ ] 编写 ER 图，明确用户、商品、SKU、库存、订单、订单明细、库存流水和订单状态日志关系。
-- [ ] 明确主键、外键策略、唯一约束、索引、金额精度及时间口径。
-- [ ] 引入 Flyway 并编写首版迁移脚本；实际执行与空库验证在第 5 步完成。
-- [ ] 单独提供开发测试数据，重复执行不会制造重复记录。
+- [x] 编写 ER 图，明确用户、商品、SKU、库存、订单、订单明细、库存流水和订单状态日志关系。
+- [x] 明确主键、外键策略、唯一约束、索引、金额精度及时间口径。
+- [x] 引入 Flyway 并编写首版迁移脚本；实际执行与空库验证在第 5 步完成。
+- [x] 单独提供开发测试数据，重复执行不会制造重复记录。
 
 学习重点：商品与 SKU 的区别、订单快照、索引与事务，不使用浮点数表示金额。
 
-### 4.1 启动 MySQL
+### 4.1 数据模型与 ER 图
 
-- [ ] 提供数据库建库和用户授权步骤，应用不使用 root；说明 Flyway 迁移所需权限。
-- [ ] 提供只启动 MySQL 的 Compose 命令。
-- [ ] 等待 MySQL 健康检查通过，验证连接与账号权限。
+ER 图、字段清单和设计口径见 [docs/database-design.md](docs/database-design.md)，表结构以 [V1__init_schema.sql](src/main/resources/db/migration/V1__init_schema.sql) 为准。第一阶段共 8 张表：
+
+| 表 | 归属模块 | 作用 |
+| --- | --- | --- |
+| `app_user` | user | 用户；第一阶段由开发接口模拟身份 |
+| `product` | product | 商品（SPU），只存名称、描述和上下架状态 |
+| `sku` | product | 可售单元，价格、库存和订单明细都落到 SKU |
+| `inventory` | inventory | 每个 SKU 一行的可用库存与预占库存 |
+| `inventory_log` | inventory | 库存变更流水，含变更量与变更后余额 |
+| `orders` | order | 订单主表，含请求键、收货信息快照和状态时间 |
+| `order_item` | order | 订单明细，保存商品名、规格和成交单价快照 |
+| `order_status_log` | order | 订单状态变更日志 |
+
+需要记住的关系：
+
+- 商品与 SKU 是一对多：商品描述“卖什么”，SKU 描述“具体哪一种”，价格和库存都属于 SKU。
+- 每个 SKU 只有一行 `inventory`，主键就是 `sku_id`；可用量与预占量分成两列，预占不是扣减总量。
+- 订单与明细是一对多，同一订单内不允许重复 SKU；明细保存商品名、规格和成交单价快照，商品后来改名或改价不影响历史订单。
+- 订单状态流转追加到 `order_status_log`，库存变化追加到 `inventory_log`，两者都不覆盖历史。
+- `orders(user_id, request_key)` 唯一，用数据库约束兜底创建订单的幂等。
+
+### 4.2 主键、外键、唯一约束与精度口径
+
+| 主题 | 本步决定 | 原因 |
+| --- | --- | --- |
+| 主键 | `BIGINT UNSIGNED AUTO_INCREMENT` | 单实例写入集中、二级索引小；对外使用订单号，不依赖自增 ID |
+| 外键 | 不建物理外键，所有关联列建索引 | 避免高频写入时父行锁扩散；完整性由服务层事务、唯一约束和测试保证 |
+| 唯一约束 | 用户名、SKU 编码、订单号、订单内 SKU、用户请求键 | 把“不能重复”的规则交给数据库，而不是只靠先查询再插入 |
+| 索引 | 用户订单列表、状态扫描、流水时间线、按 SKU 查明细等 | 先有查询再加索引，第 7 步用真实查询复核执行计划 |
+| 金额 | `DECIMAL(12,2)` 单价，`DECIMAL(14,2)` 小计与总额 | 禁止浮点数；Java 使用 `BigDecimal`，服务端计算 |
+| 时间 | `DATETIME(3)`，统一 UTC | 避免 `TIMESTAMP` 的 2038 与时区隐式转换；JDBC 强制会话时区为 UTC |
+| 字符集 | `utf8mb4` / `utf8mb4_0900_ai_ci` | 支持中文与 emoji；唯一性不区分大小写 |
+| 状态 | `VARCHAR` + `CHECK` 约束 + 服务层枚举 | 数据库拒绝拼写错误，业务语义在代码中集中 |
+
+外键不建物理约束意味着数据库不会自动阻止孤儿行，这是有意的取舍。第 7 步的集成测试要覆盖关联完整性；若以后要加物理外键，必须新增迁移并评估锁影响，不能修改 V1。
+
+### 4.3 Flyway 迁移与开发数据
+
+新增依赖：`spring-boot-starter-jdbc`、`flyway-core`、`flyway-mysql` 和 `mysql-connector-j`（runtime）。MyBatis-Plus 推迟到第 6 步与首个 Mapper 一起引入，避免在没有任何持久层代码时提前配置无法验证的自动配置。
+
+```text
+src/main/resources/db/
+├── migration/V1__init_schema.sql   # 结构迁移，所有 profile 执行
+└── seed/R__dev_seed.sql            # 开发数据，仅 local profile 加载
+```
+
+配置位于 [application.yml](src/main/resources/application.yml)：
+
+- 数据源 URL 由 `DB_HOST`、`DB_PORT`、`DB_NAME` 组成，并设置 `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`。
+- Flyway 默认只执行 `classpath:db/migration`；[application-local.yml](src/main/resources/application-local.yml) 额外加入 `classpath:db/seed`，`prod` 不会加载开发数据。
+- `baseline-on-migrate=false`、`validate-on-migrate=true`、`clean-disabled=true`、`placeholder-replacement=false`。已执行的迁移不能修改，结构变更必须新增 `V2__*.sql`。
+- 测试通过 [application-test.yml](src/test/resources/application-test.yml) 排除 DataSource 与 Flyway 自动配置，因此 `./mvnw clean verify` 不需要 MySQL；真实数据库验证留给第 5、7 步。
+
+开发数据包含 2 个用户、4 个商品、5 个 SKU、5 行库存和 5 条 `INIT` 流水，固定主键 1～5，使用 `INSERT IGNORE`。重复执行只补缺失行，不覆盖本地修改；商品 3 已下架、SKU 5 库存为 0，供后续校验“下架商品不能下单”和“库存不足整单回滚”。
+
+Flyway 需要的表级权限是 `CREATE`、`ALTER`、`DROP`、`INDEX`、`REFERENCES` 和 DML。Compose 创建的应用账号拥有 `commerce.*` 的 `ALL PRIVILEGES`，全局只有 `USAGE`，应用不使用 root。
+
+### 4.4 启动 MySQL 并验证账号
+
+compose.yaml 目前只定义 MySQL 服务，应用容器在第 8 步加入：
+
+```sh
+docker compose up -d --wait mysql
+docker compose ps
+```
+
+`--wait` 会等到健康检查通过再返回；`docker compose ps` 应显示 `healthy`。停止用 `docker compose stop mysql`，日常停止不要加 `-v`，否则会删除数据卷。
+
+MySQL 只以 `127.0.0.1:${MYSQL_HOST_PORT}:3306` 绑定宿主机回环地址。本次准备时发现宿主机 3306 已被另一个 MySQL 占用，因此把 `.env` 的 `MYSQL_HOST_PORT` 和 `DB_PORT` 同时改为 `3307`；这两个值必须一致，否则应用会连到宿主机上另一个数据库。
+
+验证连接和权限时，让密码在容器内部展开，避免出现在宿主机命令行：
+
+```sh
+docker compose exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE" \
+   -e "SELECT VERSION(), @@time_zone, @@character_set_server, @@collation_server;"'
+docker compose exec -T mysql sh -c \
+  'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" -e "SHOW GRANTS FOR CURRENT_USER();"'
+```
+
+若不用 Compose，而是使用本机已安装的 MySQL，需要手工建库与授权：
+
+```sql
+CREATE DATABASE IF NOT EXISTS commerce
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'commerce_app'@'%' IDENTIFIED BY '替换为强密码';
+GRANT ALL PRIVILEGES ON commerce.* TO 'commerce_app'@'%';
+FLUSH PRIVILEGES;
+```
+
+不要授予全局权限、`SUPER`、`GRANT` 或 `FILE`。应用账号能建表、改表和执行 DML 已足够 Flyway 使用。
+
+### 4.5 实际验证结果（2026-10-26）
+
+| 检查项 | 实际结果 |
+| --- | --- |
+| 镜像 | 使用本机已有的 `mysql:8.4.9` 镜像（`mysqld Ver 8.4.9 ... aarch64`），Compose 固定该版本；本次未重新联网拉取 |
+| 启动与健康 | `docker compose up -d --wait mysql` 退出码 0；容器状态 `running (healthy)`，失败计数 0 |
+| 端口 | 宿主机 3306 被另一个 MySQL 占用，项目改用 `127.0.0.1:3307`；`netstat` 仅显示回环地址监听，未监听局域网 |
+| 服务参数 | MySQL 8.4.9、`utf8mb4`、`utf8mb4_0900_ai_ci`、`+00:00`、`REPEATABLE-READ`、严格 `sql_mode` |
+| 应用账号 | `commerce_app` 全局只有 `USAGE`，`commerce.*` 为 `ALL PRIVILEGES`；`SHOW GRANTS` 已核对 |
+| 权限验证 | 以应用账号执行 `CREATE TABLE`、`INSERT`、`DROP TABLE` 成功；`CREATE DATABASE` 和被拒的 `mysql.user` 读取均返回权限错误 |
+| 迁移 SQL 预检 | 在临时 schema 直接执行 V1，成功建立 8 张表；预检后删除临时 schema，未污染 `commerce` 库 |
+| 开发数据 | `R__dev_seed.sql` 连续执行 2 次，行数保持 2 用户 / 4 商品 / 5 SKU / 5 库存 / 5 流水 |
+| 约束验证 | 重复请求键、重复订单号、订单内重复 SKU、重复用户名、非法状态、数量 0、负库存均被数据库拒绝 |
+| 字段类型 | 金额列 `decimal(12,2)`/`decimal(14,2)`，时间列 `datetime(3)`，已从 `information_schema` 核对 |
+| 构建 | `./mvnw clean verify` 成功，4 个测试通过，未连接数据库 |
+| 空库状态 | `commerce` 库当前 0 张表；Flyway 实际迁移和空库验证留到第 5 步 |
+
+构建日志里仍有较多测试启动阶段的 DEBUG 输出：测试上下文启动早于日志级别生效，测试执行时根日志级别已回到 `WARN`，4 个测试全部通过。这不影响本步结果；测试日志统一收敛留到第 7 步。
+
+### 4.6 学习自测
+
+- [ ] 能解释商品（SPU）与 SKU 的区别，以及为什么价格和库存挂在 SKU 上。
+- [ ] 能解释订单明细为什么保存商品名、规格和成交单价快照。
+- [ ] 能说明为什么金额使用 `DECIMAL` 而不是 `FLOAT`/`DOUBLE`。
+- [ ] 能解释 `available_quantity` 与 `reserved_quantity` 的区别，以及流水为什么同时记录变更量和变更后余额。
+- [ ] 能说明 `(user_id, request_key)` 唯一约束如何支撑创建订单幂等。
+- [ ] 能解释本方案为什么不建物理外键，以及由什么保证关联完整性。
+- [ ] 能说明已执行的 Flyway 迁移为什么不能修改，以及为什么 `prod` 不加载开发数据。
+
+自测由你阅读和实际操作后勾选；数据库服务的准备不代表已经掌握这些设计取舍。
 
 <a id="step-05"></a>
 
@@ -668,5 +787,6 @@ source scripts/use-java17.sh
 | 2026-10-26 | 手册路线调整 | 将学习与部署重排为 12 个顺序步骤，保留已完成标记和历史验证结果 | 本次仅调整文档，工程初始化尚未开始 |
 | 2026-10-26 | 第 2 步：Spring Boot 工程初始化 | Spring Boot 3.5.16 最小工程、模块包、profile、统一异常、测试和文档完成；4 个测试及 clean verify 通过；真实 JAR 启动、HTTP 与优雅关闭验证通过 | 数据库、MyBatis-Plus、Flyway 和业务模块实现按后续步骤完成；学习自测留给本人完成 |
 | 2026-10-26 | 第 3 步：源码版本与运行配置 | 完成 `.env.example`、敏感文件忽略、显式加载脚本、端口与宿主机/容器连接说明；GitHub 公开仓库 `luengkawa/java-commerce` 的 `main` 和 `step-03` 已推送；独立克隆、固定版本检出、构建及 4 个测试通过 | 学习自测留给本人完成；MySQL、Flyway 和业务模块按后续步骤完成 |
+| 2026-10-26 | 第 4 步：MySQL 与表结构准备 | 完成 8 张表的 ER 设计、V1 Flyway 迁移、可重复开发数据、数据源与迁移配置及测试隔离；`mysql:8.4.9` Compose 服务健康（宿主机 3306 被占用，改用 3307）；应用账号权限、表结构预检、约束和 `clean verify` 均验证通过 | Flyway 实际迁移、空库与增量验证、开发数据加载留到第 5 步；学习自测留给本人完成 |
 
 后续每完成一步追加记录。没有执行的测试、压测和部署不得填写成功结果。
