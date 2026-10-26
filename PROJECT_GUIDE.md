@@ -14,7 +14,7 @@
 | --- | --- | --- | --- |
 | 1 | [环境准备](#step-01) | 已完成，学习自测待本人完成 | JDK 17、Wrapper、Docker 检查通过 |
 | 2 | [Spring Boot 工程初始化](#step-02) | 已完成，学习自测待本人完成 | 工程可构建，最小启动测试通过 |
-| 3 | [源码版本与运行配置](#step-03) | 运行配置已完成，待配置远端仓库 | 配置可复现，敏感信息不入库 |
+| 3 | [源码版本与运行配置](#step-03) | 远端仓库已创建，待推送与克隆验证 | 配置可复现，敏感信息不入库 |
 | 4 | [MySQL 与表结构准备](#step-04) | 待完成 | 数据库就绪，表设计与迁移脚本已准备 |
 | 5 | [本地应用启动与迁移](#step-05) | 待完成 | 空库迁移、连接与健康检查通过 |
 | 6 | [核心业务开发与学习](#step-06) | 待完成 | 下单、支付、取消和库存流程完成 |
@@ -25,7 +25,7 @@
 | 11 | [Linux 服务器演示部署](#step-11) | 待完成，可选分支 | 服务器环境独立验收通过 |
 | 12 | [日常运维与排错](#step-12) | 持续完善 | 排错说明随实际操作补充 |
 
-当前已完成第 1、2 步和第 3 步的运行配置；第 3 步只剩真实远端仓库地址需要项目所有者提供。第 11 步需要服务器，第 12 步可在任何步骤遇到问题时查阅。后续技术阶段在第一阶段本地验收后再逐步推进。
+当前已完成第 1、2 步和第 3 步的运行配置；第 3 步的 GitHub 仓库已创建，待完成本地推送与独立克隆验证。第 11 步需要服务器，第 12 步可在任何步骤遇到问题时查阅。后续技术阶段在第一阶段本地验收后再逐步推进。
 
 ## 项目边界与当前状态
 
@@ -332,7 +332,7 @@ curl -i http://localhost:8080/api/v1/does-not-exist
 
 ## 第 3 步：源码版本与运行配置
 
-- [ ] 补充真实仓库地址、克隆命令及固定版本检出步骤（本地已用 `step-03` 标签固定版本；仓库无 `origin`，真实地址和远程克隆尚不可验证）。
+- [ ] 补充真实仓库地址、克隆命令及固定版本检出步骤（真实地址已记录，待完成 push 和独立 clone 验证）。
 - [x] 提供 `.env.example` 并解释每个变量的用途、默认值和必填性。
 - [x] 将实际 `.env` 和敏感文件加入 Git 忽略规则。
 - [x] 明确本地运行与容器运行的数据库地址区别。
@@ -343,12 +343,12 @@ curl -i http://localhost:8080/api/v1/does-not-exist
 
 ### 3.1 源码版本状态
 
-当前真实源码位置是本机目录 `/Users/wakalueng/Documents/ChatGPT/java电商`。本地首次提交用 `step-03` 标签固定，可以在当前仓库执行 `git checkout --detach step-03` 复现。实际检查 `git remote -v` 没有输出，因此暂时没有可供另一台机器克隆的远程地址。这项不能用占位 URL 标记为已完成。
+当前真实源码位置是本机目录 `/Users/wakalueng/Documents/ChatGPT/java电商`，真实远端仓库是 [https://github.com/luengkawa/java-commerce](https://github.com/luengkawa/java-commerce)。本地第 3 步提交用 `step-03` 标签固定，可以用 detached HEAD 复现该交付状态。
 
-项目所有者提供真实的 Git SSH 或 HTTPS URL 后，先创建并推送首次提交与标签，再将下面的 `REPOSITORY_URL` 替换为手册中记录的实际值：
+在新目录中克隆主分支并检出固定版本：
 
 ```sh
-git clone "$REPOSITORY_URL" commerce-platform
+git clone https://github.com/luengkawa/java-commerce.git commerce-platform
 cd commerce-platform
 git fetch --tags --prune
 git checkout --detach step-03
@@ -428,7 +428,7 @@ source scripts/use-java17.sh
 | `.env` 加载 | 以 `COMMERCE_ENV_FILE=.env.example` 通过 `scripts/run-local.sh` 真实启动，local profile 激活，Tomcat 监听 8080 |
 | HTTP 冒烟 | `/api/v1/system/ping` 和 `/actuator/health` 均返回 200 与预期 JSON |
 | 停止 | 中断运行脚本后 Spring Boot 进入 graceful shutdown |
-| 源码版本 | 本地初始提交使用 `step-03` 标签固定；因未配置 `origin`，未执行远程 push/clone 验证 |
+| 源码版本 | GitHub 公开仓库 `luengkawa/java-commerce` 已创建，本地版本用 `step-03` 标签固定；待完成 push/clone 验证 |
 
 <a id="step-04"></a>
 
@@ -667,6 +667,6 @@ source scripts/use-java17.sh
 | 2026-10-26 | 第 1 步：环境准备 | 安装 Corretto 17.0.21；Maven Wrapper 下载并运行 3.9.11；Docker 恢复；Java 编译运行及环境检查通过 | Spring Boot、MySQL、业务开发与部署尚未执行；学习自测留给本人完成 |
 | 2026-10-26 | 手册路线调整 | 将学习与部署重排为 12 个顺序步骤，保留已完成标记和历史验证结果 | 本次仅调整文档，工程初始化尚未开始 |
 | 2026-10-26 | 第 2 步：Spring Boot 工程初始化 | Spring Boot 3.5.16 最小工程、模块包、profile、统一异常、测试和文档完成；4 个测试及 clean verify 通过；真实 JAR 启动、HTTP 与优雅关闭验证通过 | 数据库、MyBatis-Plus、Flyway 和业务模块实现按后续步骤完成；学习自测留给本人完成 |
-| 2026-10-26 | 第 3 步：源码版本与运行配置 | 完成 `.env.example`、敏感文件忽略、显式加载脚本、端口与宿主机/容器连接说明；完整构建、4 个测试和真实启动 HTTP 验证通过；本地版本以 `step-03` 标签固定 | 未配置 Git `origin`，真实仓库 URL、push 和远程 clone 待项目所有者提供地址后完成；学习自测留给本人完成 |
+| 2026-10-26 | 第 3 步：源码版本与运行配置 | 完成 `.env.example`、敏感文件忽略、显式加载脚本、端口与宿主机/容器连接说明；完整构建、4 个测试和真实启动 HTTP 验证通过；GitHub 仓库 `luengkawa/java-commerce` 已创建 | 待完成 push 和远端 clone 验证；学习自测留给本人完成 |
 
 后续每完成一步追加记录。没有执行的测试、压测和部署不得填写成功结果。

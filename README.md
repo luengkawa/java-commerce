@@ -3,6 +3,7 @@
 这是一个用于学习 Java 后端、订单事务和库存一致性的模块化单体项目。目前已完成工具链、Spring Boot 最小工程和运行配置，业务与数据库将在后续步骤逐步实现。
 
 详细路线、完成状态和学习入口见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。架构说明见 [docs/architecture.md](docs/architecture.md)。
+源码仓库：[https://github.com/luengkawa/java-commerce](https://github.com/luengkawa/java-commerce)。
 
 ## 当前运行方式
 
